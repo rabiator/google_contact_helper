@@ -38,38 +38,61 @@ class GoogleContacts(object):
         return entry.id.text
     return ''
 
-  def ListAllContacts(self):
+  def PrintAllContacts(self):
     """Retrieves a list of contacts and displays name and primary email."""
     query = gdata.contacts.client.ContactsQuery()
     query.max_results = 1000
-    # system group: my contacts
-    query.group = self.GetGroupId('System Group: My Contacts')
+    query.group       = self.GetGroupId('System Group: My Contacts')
     feed = self.gd_client.GetContacts(q=query)
     if not feed.entry:
       print '\nNo contacts in feed.\n'
-      return 0
+      return
     for i, entry in enumerate(feed.entry):
       if not entry.name is None:
         family_name     = entry.name.family_name is None      and " " or entry.name.family_name.text
         full_name       = entry.name.full_name is None        and " " or entry.name.full_name.text
         given_name      = entry.name.given_name is None       and " " or entry.name.given_name.text
         additional_name = entry.name.additional_name is None  and " " or entry.name.additional_name.text
-        #print '\n %s \"%s\": \"%s\" \"%s\" \"%s\"' % (i+1, full_name, given_name, family_name, additional_name)
-        new_full_name = "%s %s %s" % (family_name, given_name, additional_name)
-        new_full_name = new_full_name.strip()
-        print i
-        if new_full_name != full_name:
-          print 'old full name: \"%s\"' % full_name
-          print 'new full name: \"%s\"' % new_full_name
-        else:
-          print 'unchanged full name: \"%s\"' % new_full_name
-    return len(feed.entry)
+        print '\n %s \"%s\": \"%s\" \"%s\" \"%s\"' % (i+1, full_name, given_name, family_name, additional_name)
 
-  def FritzContacts(self):
-    """Retrieves a list of contacts and create Fritz contacts."""
+  def FixFullNames(self):
+    """Recreate the full_name entry based on family, given and additional name."""
     query = gdata.contacts.client.ContactsQuery()
     query.max_results = 1000
-    query.group = self.GetGroupId('Telefon')
+    query.group       = self.GetGroupId('System Group: My Contacts')
+    feed = self.gd_client.GetContacts(q=query)
+    if not feed.entry:
+      print '\nNo contacts in feed.\n'
+      return
+    for i, entry in enumerate(feed.entry):
+      if not entry.name is None:
+        family_name     = entry.name.family_name is None      and " " or entry.name.family_name.text
+        full_name       = entry.name.full_name is None        and " " or entry.name.full_name.text
+        given_name      = entry.name.given_name is None       and " " or entry.name.given_name.text
+        additional_name = entry.name.additional_name is None  and " " or entry.name.additional_name.text
+        new_full_name   = "%s %s %s" % (family_name, given_name, additional_name)
+        new_full_name   = new_full_name.strip()
+        print i
+        if new_full_name != full_name:
+          print 'full name: \"%s\" --> \"%s\"' % (full_name, new_full_name)
+          k = raw_input('y to agree')
+          if k == 'y':
+            entry.name.full_name.text = new_full_name
+            try:
+              updated_entry = self.gd_client.Update(entry)
+              print 'Updated full name: %s' % updated_entry.name.full_name.text
+            except gdata.client.RequestError, e:
+              if e.status == 412:
+                # Etags mismatch: handle the exception.
+                pass
+          else:
+            print 'unchanged full name: \"%s\"' % new_full_name
+
+  def FritzContacts(self, group_name):
+    """Retrieves the contacts of a given group and return the element tree formatted in Fritz XML."""
+    query = gdata.contacts.client.ContactsQuery()
+    query.max_results = 1000
+    query.group       = self.GetGroupId(group_name)
     feed = self.gd_client.GetContacts(q=query)
     if not feed.entry:
       print '\nNo contacts in feed.\n'
@@ -80,18 +103,18 @@ class GoogleContacts(object):
     
     for i, entry in enumerate(feed.entry):
       if not entry.name is None:
+        contact = SubElement(phonebook, 'contact')
+        SubElement(contact, 'category')
+        person = SubElement(contact,'person')
+
+        # assemble name for entry
         family_name     = entry.name.family_name is None      and " " or entry.name.family_name.text
         given_name      = entry.name.given_name is None       and " " or entry.name.given_name.text
         additional_name = entry.name.additional_name is None  and " " or entry.name.additional_name.text
         new_full_name = "%s %s %s" % (family_name, given_name, additional_name)
-        new_full_name = new_full_name.strip()
+        SubElement(person, 'realName').text = new_full_name.strip()
 
-        contact = SubElement(phonebook, 'contact')
-        SubElement(contact, 'category')
-        person = SubElement(contact,'person')
-        SubElement(person,'realName').text = new_full_name
         telephony = SubElement(contact,'telephony')
-
         for phone_number in entry.phone_number:
           if not (phone_number.rel == gdata.data.FAX_REL
                   or phone_number.rel == gdata.data.HOME_FAX_REL
@@ -103,8 +126,8 @@ class GoogleContacts(object):
             if (phone_number.rel == gdata.data.WORK_MOBILE_REL
                 or phone_number.rel == gdata.data.MOBILE_REL):
               num_type = "mobile"
-              
             SubElement(telephony, 'number', {'type':num_type}).text = phone_number.text
+
         SubElement(contact, 'services')
         SubElement(contact, 'setup')
         SubElement(contact, 'uniqueid').text = str(i)
@@ -112,7 +135,7 @@ class GoogleContacts(object):
     return root
 
   def WriteXmlFile(self, elem, filename):
-    """Write the ElementTree.Element to a file."""
+    """Write the ElementTree.Element into a XML file."""
     # convert element tree to utf-8 and then to unicode
     rough_string = ElementTree.tostring(elem, 'utf-8').decode('utf-8')
     # all unicode strings must be utf-8 encoded before they can be passed to minidom methods
@@ -167,10 +190,19 @@ def main():
     print 'Invalid user credentials given.'
     return
 
+  ## application exampe 1: print all groups and contacts
   #gc.PrintAllGroups()
-  #gc.ListAllContacts()
-  fritz_xml_elements = gc.FritzContacts()
+  #gc.PrintAllContacts()
+  
+  ## application example 2: export gcontacts into Fritz XML format
+  # get contacts from group 'Telefon'
+  fritz_xml_elements = gc.FritzContacts('Telefon')
+  # write these contacts into a XML file
   gc.WriteXmlFile(fritz_xml_elements, 'FritzContacts.xml')
+  
+  ## application example 3: fix the full_name entry in all contacts
+  gc.FixFullNames()
+  
 
 if __name__ == '__main__':
   main()
