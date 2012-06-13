@@ -2,24 +2,24 @@
 #
 # https://developers.google.com/google-apps/contacts/v3/
 
-#import sys
-#import getopt
+import sys
+import os
+import getopt
+import glob
+import codecs
 #import atom
 #import gdata.contacts.data
 import gdata.contacts.client
 
-from xml.etree import ElementTree
+from xml.etree             import ElementTree
 from xml.etree.ElementTree import Element, SubElement
-from xml.dom import minidom
+from xml.dom               import minidom
 
 class GoogleContacts(object):
   """GoogleContacts object provides helper methods to access Google contacts."""
 
-  def __init__(self):
+  def __init__(self, user, pw):
     """Constructor for the GoogleContacts object."""
-    # customize the class HERE
-    user = 'Georg.Drenkhahn@googlemail.com'
-    pw   = 'oprlmknbrbumphcn'
     # instanciate the client and authenticate
     self.gd_client = gdata.contacts.client.ContactsClient(source='google_contact_helper')
     self.gd_client.ClientLogin(user, pw, self.gd_client.source)
@@ -69,7 +69,6 @@ class GoogleContacts(object):
     """Retrieves a list of contacts and create Fritz contacts."""
     query = gdata.contacts.client.ContactsQuery()
     query.max_results = 1000
-    # group: Telefon
     query.group = self.GetGroupId('Telefon')
     feed = self.gd_client.GetContacts(q=query)
     if not feed.entry:
@@ -82,7 +81,6 @@ class GoogleContacts(object):
     for i, entry in enumerate(feed.entry):
       if not entry.name is None:
         family_name     = entry.name.family_name is None      and " " or entry.name.family_name.text
-        #full_name       = entry.name.full_name is None        and " " or entry.name.full_name.text
         given_name      = entry.name.given_name is None       and " " or entry.name.given_name.text
         additional_name = entry.name.additional_name is None  and " " or entry.name.additional_name.text
         new_full_name = "%s %s %s" % (family_name, given_name, additional_name)
@@ -113,30 +111,66 @@ class GoogleContacts(object):
 
     return root
 
-def prettify(elem):
-    """Return a pretty-printed XML string for the Element."""
-    rough_string = ElementTree.tostring(elem, 'utf-8')
-    reparsed = minidom.parseString(rough_string)
-    return reparsed.toprettyxml(indent="  ")
+  def WriteXmlFile(self, elem, filename):
+    """Write the ElementTree.Element to a file."""
+    # convert element tree to utf-8 and then to unicode
+    rough_string = ElementTree.tostring(elem, 'utf-8').decode('utf-8')
+    # all unicode strings must be utf-8 encoded before they can be passed to minidom methods
+    reparsed     = minidom.parseString(rough_string.encode('utf8'))
+    # convert minidom tree to XML utf-8 string and then into unicode string
+    pretty_xml   = reparsed.toprettyxml(indent="  ", encoding='utf-8').decode('utf-8')
+    # print as unicode string
+    print pretty_xml
+    with codecs.open(filename, 'w', 'utf-8') as f:
+      # write unicode string to file encoded as utf-8 
+      f.write(pretty_xml)
+    f.close()
 
 def main():
   # Parse command line options
-#  try:
-#    opts, args = getopt.getopt(sys.argv[1:], '', ['user=', 'pw='])
-#  except getopt.error, msg:
-#    print 'google_contact_helper.py --user [username] --pw [password]'
-#    sys.exit(2)
-
   try:
-    gc = GoogleContacts()
+    opts, args = getopt.getopt(sys.argv[1:], '', ['user=', 'pw='])
+  except getopt.error, msg:
+    print msg
+    print 'Usage: ' + __file__ + ' --user [username] --pw [password]'
+    sys.exit(2)
+    
+  if (len(args) > 0):
+    print 'Info: given arguments are ignored'
+
+  user = ''
+  pw   = ''
+
+  # try fetching the user and passwd from local file
+  passwd_file = os.path.expanduser('~/gmail_credential.txt')
+  if (len(glob.glob(passwd_file)) == 1):
+    with open(passwd_file, 'r') as f:
+      lines = f.readlines()
+      user = lines[0].rstrip()
+      pw   = lines[1].rstrip()
+    f.close()
+
+  # Process options
+  for option, arg in opts:
+    if option == '--user':
+      user = arg
+    elif option == '--pw':
+      pw   = arg
+
+  if (user == '') or (pw == ''):
+    print 'No User or Password specified'
+    sys.exit(2)
+    
+  try:
+    gc = GoogleContacts(user, pw)
   except gdata.client.BadAuthentication:
     print 'Invalid user credentials given.'
     return
 
   #gc.PrintAllGroups()
   #gc.ListAllContacts()
-  fritz_xml = gc.FritzContacts()
-  print prettify(fritz_xml)
+  fritz_xml_elements = gc.FritzContacts()
+  gc.WriteXmlFile(fritz_xml_elements, 'FritzContacts.xml')
 
 if __name__ == '__main__':
   main()
