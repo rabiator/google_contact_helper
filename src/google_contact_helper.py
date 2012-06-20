@@ -88,6 +88,52 @@ class GoogleContacts(object):
           else:
             print 'unchanged full name: \"%s\"' % new_full_name
 
+  def SetPrimaryPhoneNumber(self, group_name):
+    """Iterate through all contacts and set the primary phone number for each contact."""
+    query = gdata.contacts.client.ContactsQuery()
+    query.max_results = 1000
+    query.group       = self.GetGroupId(group_name)
+    feed = self.gd_client.GetContacts(q=query)
+    if not feed.entry:
+      print '\nNo contacts in feed.\n'
+      return
+    for i, entry in enumerate(feed.entry):
+      if (not entry.phone_number is None) and (len(entry.phone_number) > 1) and (not entry.name is None):
+        family_name     = entry.name.family_name is None      and " " or entry.name.family_name.text
+        given_name      = entry.name.given_name is None       and " " or entry.name.given_name.text
+        print '%s %s %s' % (i, given_name, family_name)
+        for j, pn in enumerate(entry.phone_number):
+          if not (pn.rel == gdata.data.FAX_REL
+                  or pn.rel == gdata.data.HOME_FAX_REL
+                  or pn.rel == gdata.data.WORK_FAX_REL
+                  or pn.rel == gdata.data.OTHER_FAX_REL):
+            print '%s: %s %s' % (j, pn.primary, pn.text) 
+        idx = -1
+        try:
+          k = raw_input("select no of primary phone number")
+          if k == 'q':
+            print 'exiting function'
+            return
+          idx = int(k)
+        except KeyboardInterrupt:
+          print "exiting function"
+          return          
+        except ValueError as e:
+          print "Not a valid number. No change to this entry"
+        if ((idx >= 0) and (idx < len(entry.phone_number))):
+          for k in range(len(entry.phone_number)):
+            if (k == idx):
+              entry.phone_number[k].primary = 'true'
+            else:
+              entry.phone_number[k].primary = None
+          try:
+            updated_entry = self.gd_client.Update(entry)
+            print 'Updated primary phone number: %s' % updated_entry.phone_number[idx].text
+          except gdata.client.RequestError, e:
+            if e.status == 412:
+              # Etags mismatch: handle the exception.
+              pass
+
   def FritzContacts(self, group_name):
     """Retrieves the contacts of a given group and return the element tree formatted in Fritz XML."""
     query = gdata.contacts.client.ContactsQuery()
@@ -190,19 +236,21 @@ def main():
     print 'Invalid user credentials given.'
     return
 
-  ## application exampe 1: print all groups and contacts
+  ## application example 1: print all groups and contacts
   #gc.PrintAllGroups()
   #gc.PrintAllContacts()
   
   ## application example 2: export gcontacts into Fritz XML format
   # get contacts from group 'Telefon'
-  fritz_xml_elements = gc.FritzContacts('Telefon')
+#  fritz_xml_elements = gc.FritzContacts('Telefon')
   # write these contacts into a XML file
-  gc.WriteXmlFile(fritz_xml_elements, 'FritzContacts.xml')
+#  gc.WriteXmlFile(fritz_xml_elements, 'FritzContacts.xml')
   
   ## application example 3: fix the full_name entry in all contacts
-  gc.FixFullNames()
-  
+#  gc.FixFullNames()
+ 
+  ## application example 4: set the primary phone numbers for all contacts
+  gc.SetPrimaryPhoneNumber('Telefon') 
 
 if __name__ == '__main__':
   main()
