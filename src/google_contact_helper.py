@@ -7,8 +7,6 @@ import os
 import getopt
 import glob
 import codecs
-#import atom
-#import gdata.contacts.data
 import gdata.contacts.client
 
 from xml.etree             import ElementTree
@@ -145,7 +143,7 @@ class GoogleContacts(object):
       return None
     
     root = Element('phonebooks')
-    phonebook = SubElement(root, 'phonebook', {'owner':"1", 'name':"Test"})
+    phonebook = SubElement(root, 'phonebook', {'owner':"1", 'name':"GoogleExport"})
     
     for i, entry in enumerate(feed.entry):
       if not entry.name is None:
@@ -172,7 +170,10 @@ class GoogleContacts(object):
             if (phone_number.rel == gdata.data.WORK_MOBILE_REL
                 or phone_number.rel == gdata.data.MOBILE_REL):
               num_type = "mobile"
-            SubElement(telephony, 'number', {'type':num_type}).text = phone_number.text
+            prio="0"
+            if phone_number.primary and phone_number.primary == 'true':
+              prio="1"
+            SubElement(telephony, 'number', {'type':num_type, 'prio':prio}).text = phone_number.text
 
         SubElement(contact, 'services')
         SubElement(contact, 'setup')
@@ -242,15 +243,16 @@ def main():
   
   ## application example 2: export gcontacts into Fritz XML format
   # get contacts from group 'Telefon'
-#  fritz_xml_elements = gc.FritzContacts('Telefon')
+  #fritz_xml_elements = gc.FritzContacts('Telefon')
   # write these contacts into a XML file
-#  gc.WriteXmlFile(fritz_xml_elements, 'FritzContacts.xml')
+  #tree = ElementTree.ElementTree(fritz_xml_elements)
+  #tree.write('FritzContacts.xml', encoding="utf-8")
   
   ## application example 3: fix the full_name entry in all contacts
-#  gc.FixFullNames()
+  gc.FixFullNames()
  
   ## application example 4: set the primary phone numbers for all contacts
-  gc.SetPrimaryPhoneNumber('Telefon') 
+  #gc.SetPrimaryPhoneNumber('Telefon') 
 
 if __name__ == '__main__':
   main()
